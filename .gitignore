@@ -1,0 +1,33 @@
+# .gitignore for a Python Flask app with a venv dir
+
+.history
+/static/uploadsy
+
+# Ignore virtual environment directory
+venv/
+
+# Ignore Python compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore Flask instance folder
+instance/
+
+# Ignore log files
+*.log
+
+# Ignore SQLite database files
+*.sqlite
+
+# Ignore temporary files
+*.tmp
+*.swp
+*.swo
+
+# Ignore IDE and editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace

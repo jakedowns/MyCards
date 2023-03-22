@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyCards</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
+</head>
+<body>
+    <div id="app">
+<!-- Toast popup notification element -->
+<div class="toast-popup" v-if="showToast">
+    <p>{{ toastMessage }}</p>
+</div>
+
+        <!-- Welcome Popup -->
+<!-- Popup underlay element -->
+<div class="popup-underlay" v-if="currentPopup !== null" @click="closePopup"></div>
+
+        <div class="welcome-popup popup" v-if="currentPopup == 'welcome'">
+             <h2>Welcome</h2>
+             <p>MyCards is an app that allows you to create and play with custom decks of cards. Choose between Editor Mode to create your own deck or Player Mode to play with existing decks.</p>
+             <button @click="closePopup" class="button-primary">Continue</button>
+        </div>
+        <div>
+            <h1>MyCards</h1>
+<!--             <button @click="mode = 'editor'">Editor Mode</button> -->
+            <button @click="mode = 'deck_select'">Decks</button>
+
+            <!-- Display the selected deck name -->
+
+            <p v-if="selectedDeck">Viewing deck: {{ selectedDeck.name }}</p>
+                    </div>
+        <div class="newdeck-popup popup" v-if="currentPopup == 'newDeck'">
+            <form @submit.prevent="saveDeck">
+                <label for="deckName">Deck Name:</label>
+                <input type="text" id="deckName" v-model="newDeck.name" ref="newDeckName" placeholder="My First Deck">
+                <label for="deckType">Deck Type:</label>
+                <select id="deckType" v-model="newDeck.type">
+                    <option value="none">None</option>
+                    <option value="new">New Template</option>
+                    <option value="standard">Standard Playing Card Deck</option>
+                </select>
+                <!-- Callout box for extra options -->
+
+                <div v-if="newDeck.type !== 'none'">
+                    <div v-if="newDeck.type === 'new'">
+                        <label for="deckTemplateName">Deck Template Name:</label>
+                        <input type="text" id="deckTemplateName" placeholder="My New Deck Template">
+                    </div>
+                </div>
+                <label for="numCards">Number of Cards:</label>
+                <input type="number" id="numCards" v-model="newDeck.numCards" min="1" value="52">
+                <label for="numSuits">Number of Suits:</label>
+                <input type="number" id="numSuits" v-model="newDeck.numSuits" min="1" max="10">
+                <label for="numRanks">Number of Ranks:</label>
+                <input type="number" id="numRanks" v-model="newDeck.numRanks" min="1" max="100">
+                <label for="bgImage">Background Image:</label>
+                <input type="file" id="bgImage" @change="uploadImage">
+                <!-- Preview the uploaded image -->
+                <div v-if="newDeck.bgImage" class="uploaded-image-preview" :style="{ backgroundImage: 'url(' + newDeck.bgImage + ')' }"></div>
+                <!-- Add a button to clear the bgImage -->
+                <button @click="newDeck.bgImage = null">Clear Background Image</button>
+                <button type="submit" class="button-primary">Save Deck</button>
+            </form>
+            <br/>
+            <button disabled>Open Deck Designer</button>
+            <small>coming soon</small>
+        </div>
+        <div v-if="mode === 'deck_select'">
+            <!-- Display the available decks in a list -->
+            <ul class="deck-list">
+                 <li class="deck new-deck" @click.prevent="showPopup('newDeck')">
+                     <span class="label">New Deck</span>
+                 </li>
+                 <li v-for="deck in decks" :key="deck.name" class="deck">
+                     <span class="label">{{ deck.name }}</span>
+                     <div class="preview" :style="{ backgroundImage: 'url(' + deck.bgImage + ')' }"></div>
+
+                    <div class="info">
+                        <p>
+                        <span class="label">Type:</span>
+                        <span class="value">{{ deck.type }}</span>
+                        </p>
+
+                        <p>
+                            <span class="label">Number of Cards:</span>
+                            <span class="value">{{ deck.numCards }}</span>
+                        </p>
+                    </div>
+
+                    <div class="actions">
+                        <button class="button-primary" @click="playDeck(deck)">Play</button>
+                        <button class="edit-btn" @click="editDeck(deck)">Edit</button>
+                        <button class="delete-btn" @click="deleteDeck(deck)">Delete</button>
+                     </div>
+                  </li>
+             </ul>
+      </div>
+    </div>
+    <script>
+        new Vue({
+            el: '#app',
+            data: {
+                mode: 'deck_select',
+                showPopupUnderlay: false,
+                currentPopup: 'welcome',
+                newDeck: {
+                    name: '',
+                    numCards: 52,
+                    numSuits: 4,
+                    numRanks: 13,
+                    bgImage: null,
+                    type: 'standard'
+                },
+                decks: [],
+                showToast: false,
+                toastMessage: '',
+                selectedDeck: null,
+                isEditingDeck: false
+            },
+            mounted(){
+                window.myapp = this
+
+                // load decks from local storage
+                this.loadDecks()
+
+                // fetch decks from server
+                this.getDecksFromServer()
+
+                // make esc key close popup
+                document.addEventListener('keyup', (e) => {
+                    if(e.key === 'Escape'){
+                        this.closePopup()
+                    }
+                })
+            },
+            methods: {
+                // method to save decks to localstorage
+                saveDecks(){
+                    localStorage.setItem('decks', JSON.stringify(this.decks))
+                },
+                // method to load decks from localstorage
+                loadDecks(){
+                    this.decks = JSON.parse(localStorage.getItem('decks')) || []
+                },
+                // show popup
+                showPopup: function(popup) {
+                    this.showPopupUnderlay = true;
+                    this.currentPopup = popup;
+
+                    // wait a tick, and if the popup was newDeck, focus the name input
+                    this.$nextTick(() => {
+                        if (popup === 'newDeck') {
+                            this.$refs.newDeckName.focus()
+                        }
+                    })
+                },
+                // close current popup
+                closePopup() {
+                    this.currentPopup = null;
+                },
+                showToastMessage(message) {
+                    this.toastMessage = message;
+                    this.showToast = true;
+
+                    // Add fade-out class after 3 seconds
+                    setTimeout(() => {
+                        this.$refs.toastPopup.classList.add('fade-out');
+                    }, 3000);
+
+                    // Set showToast to false after another second
+                    setTimeout(() => {
+                        this.showToast = false;
+                        this.$refs.toastPopup.classList.remove('fade-out');
+                    }, 4000);
+                },
+                playDeck(deck){
+                    this.mode = 'player'
+                    this.selectedDeck = deck
+                    this.showToastMessage('Playing deck ' + deck.name)
+                },
+                getDecksFromServer(){
+                    // fetch decks from server
+                    fetch('/decks')
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log(data)
+                    })
+                },
+                saveDeck() {
+                    let toSave = { ...this.newDeck };
+
+                    // calculate the total numCards in the deck
+                    //toSave.numCards = toSave.numSuits * toSave.numRanks;
+
+                    // use performance.now() to generate a unique id
+                    if(!this.isEditingDeck){
+                        toSave.uid = performance.now();
+                        this.decks.push(toSave);
+                    }else{
+                        // find the deck in the decks array and update it
+                        let deckIndex = this.decks.findIndex(deck => deck.uid === this.selectedDeck.uid)
+                        this.decks[deckIndex] = toSave
+                    }
+
+                    // save the deck to the db by POSTing to /decks
+                    fetch('/decks', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(toSave)
+                    })
+
+                    // show a toast message that the deck was created successfully (print the deck name in the message)
+                    this.showToastMessage(`Deck ${this.newDeck.name} saved successfully!`);
+
+                    // close the popup
+                    this.closePopup();
+
+                    // reset inputs
+                    this.isEditingDeck = false;
+                    this.newDeck.name = '';
+                    this.newDeck.numCards = 52;
+                    this.newDeck.numSuits = 4;
+                    this.newDeck.numRanks = 13;
+                    this.newDeck.bgImage = null;
+                    this.newDeck.type = 'standard';
+
+                },
+                deleteDeck(deck){
+                    // Add a confirmation moment before deleting the deck
+                    if (!confirm(`Are you sure you want to delete the deck ${deck.name}?`)) {
+                        return;
+                    }
+                    // delete the deck from the db by DELETEing to /decks/:deckName
+                    fetch(`/decks/${deck.uid}`, {
+                        method: 'DELETE'
+                    })
+
+                    // find the index by deck.uid and splice it out of the decks array
+                    let index = this.decks.findIndex(d => d.uid === deck.uid);
+                    this.decks.splice(index, 1);
+
+                    // show a toast message that the deck was deleted successfully (print the deck name in the message)
+                    this.showToastMessage(`Deck ${deck.name} deleted successfully!`);
+                },
+                editDeck(deck){
+                    this.showPopup('newDeck')
+                    this.newDeck = {...deck}
+                    this.isEditingDeck = true;
+                },
+                uploadImage(event) {
+                    this.newDeck.bgImage = event.target.files[0];
+
+                    // copy file pointer to a new variable
+                    let file = this.newDeck.bgImage;
+
+                    // write the dataurl to the bgImage property while the file is uploading
+                    let reader = new FileReader();
+                    reader.onload = (e) => {
+                        this.newDeck.bgImage = e.target.result;
+                    };
+                    reader.readAsDataURL(this.newDeck.bgImage);
+
+                    // Create a FormData object to hold the image file
+                    const formData = new FormData();
+                    formData.append('image', file);
+
+                    // Send the image file to the /upload endpoint using a POST request
+                    fetch('/upload', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log(data);
+                        // Update the newDeck.bgImage with the returned image URL
+                        this.newDeck.bgImage = data.url;
+                    })
+                    .catch(error => {
+                        console.error('Error uploading image:', error);
+                    });
+                }
+            }
+        });
+    </script>
+<!-- Add a style tag to insert CSS -->
+<style>
+    /* Set the dark-mode theme for the body */
+    body {
+        background-color: #222;
+        color: #f0f0f0;
+        font-family: Arial, sans-serif;
+    }
+
+    /* Import a fun, blocky, open-source webfont */
+    @import url('https://fonts.googleapis.com/css2?family=Bungee&display=swap');
+
+    /* Apply the webfont to the welcome box (h1) with a large font size */
+    h1 {
+        font-family: 'Bungee', cursive;
+        font-size: 48px;
+    }
+
+
+    /* Style the buttons */
+    button {
+        background-color: #444;
+        border: none;
+        color: #f0f0f0;
+        cursor: pointer;
+        font-size: 16px;
+        margin: 5px;
+        padding: 10px;
+        text-align: center;
+        text-decoration: none;
+        transition-duration: 0.4s;
+        box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        text-shadow: -1px -1px 1px rgba(255, 255, 255, 0.3), 1px 1px 1px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Change button color and shadow on hover */
+    button:hover {
+        background-color: #555;
+        box-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Style the form elements */
+    input[type="text"], input[type="number"], input[type="file"] {
+        background-color: #333;
+        border: 1px solid #444;
+        color: #f0f0f0;
+        font-size: 16px;
+        margin: 5px;
+        padding: 5px;
+    }
+
+    /* Style the labels */
+    label {
+        display: block;
+        font-size: 16px;
+        margin: 5px;
+    }
+
+.popup {
+    background-color: #333;
+    border: 1px solid #444;
+    border-radius: 5px;
+    box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.5);
+    margin: 20px;
+    padding: 20px;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80%;
+    max-width: 500px;
+    z-index: 100;
+}
+
+.popup-underlay {
+    background-color: rgba(0, 0, 0, 0.5);
+    height: 100%;
+    left: 0;
+    position: fixed;
+    top: 0;
+    width: 100%;
+    z-index: 99;
+}
+
+/* Add a button-primary class with a green cta style */
+
+.button-primary {
+
+    background-color: #28a745;
+     color: #ffffff;
+ }
+
+  .button-primary:hover {
+
+    background-color: #218838;
+}
+
+    /* Style the #app element to have a max-width like a mobile phone app and center it within the page */
+    #app {
+        max-width: 500px;
+        margin: 0 auto;
+    }
+
+
+    /* Style the deck list */
+.deck-list {
+    display: flex;
+    flex-wrap: wrap;
+    flex-direction: row;
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+}
+
+/* Style the individual deck items */
+.deck {
+    background-color: #333;
+    border: 1px solid #444;
+    border-radius: 5px;
+    box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin: 10px;
+    padding: 20px;
+    width: calc(50% - 100px);
+    position: relative;
+    transition: all 0.4s ease;
+}
+
+/* Style the deck name label */
+.deck .label {
+    font-size: 16px;
+    margin-bottom: 10px;
+}
+
+/* Style the deck preview */
+.deck .preview {
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    border-radius: 5px;
+    height: 100px;
+    width: 100px;
+}
+
+    /* Style the edit and delete buttons */
+.deck .actions {
+    display: none;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+}
+
+.deck .actions button {
+    background-color: #444;
+    border: none;
+    color: #f0f0f0;
+    cursor: pointer;
+    font-size: 14px;
+    margin: 0 5px;
+    padding: 5px;
+    transition-duration: 0.4s;
+    box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    text-shadow: -1px -1px 1px rgba(255, 255, 255, 0.3), 1px 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+.deck .actions button:hover {
+    background-color: #555;
+    box-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Show the buttons when hovering over the .deck element */
+.deck:hover .actions {
+    display: block;
+}
+
+/* Add a special hover effect to .deck that lightens the background color */
+.deck:hover {
+    background-color: #444;
+
+    /* lift the deck up a bit, and increase the box shadow to compensate */
+    transform: translateY(-5px);
+    box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.5);
+}
+
+.new-deck { cursor: pointer; }
+
+/* Style the toast message */
+.toast-popup {
+    background-color: #333;
+    border: 1px solid #444;
+    border-radius: 5px;
+    box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.5);
+    left: 50%;
+    padding: 10px;
+    position: fixed;
+    top: 20px;
+    transform: translateX(-50%);
+    z-index: 101;
+}
+
+.toast-popup p {
+    font-size: 16px;
+    margin: 0;
+    text-align: center;
+}
+
+.toast-popup.fade-out {
+    animation: fadeOut 1s;
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+</style>
+
+</body>
+</html>
