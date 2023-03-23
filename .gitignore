@@ -1,7 +1,7 @@
 # .gitignore for a Python Flask app with a venv dir
 
 .history
-/static/uploadsy
+/static/uploads
 
 # Ignore virtual environment directory
 venv/
